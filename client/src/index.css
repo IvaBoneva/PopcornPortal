@@ -1,0 +1,18 @@
+@import url("https://fonts.googleapis.com/css2?family=Anaheim:wght@400..800&family=Jost:ital,wght@0,100..900;1,100..900&family=Lexend+Deca:wght@100..900&family=Lexend:wght@100..900&family=Outfit:wght@100..900&family=Playfair:ital,opsz,wght@0,5..1200,300..900;1,5..1200,300..900&display=swap");
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #f84565;
+  --color-primary-dull: #d63854;
+}
+
+* {
+  font-family: "Lexend Deca", sans-serif;
+  scrollbar-width: thin;
+  scrollbar-color: #787777 #1e1e1e;
+}
+
+body {
+  color: white;
+  background-color: #09090b;
+}
