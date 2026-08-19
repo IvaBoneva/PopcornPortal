@@ -69,7 +69,7 @@ const Navbar = () => {
             scrollTo(0, 0);
             setIsOpen(false);
           }}
-          to="/favorite"
+          to="/favourite"
         >
           Favorites
         </Link>
