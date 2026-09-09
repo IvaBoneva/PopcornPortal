@@ -9,11 +9,11 @@ import MyBookings from "./pages/MyBookings";
 import Favourite from "./pages/Favourite";
 import { Toaster } from "react-hot-toast";
 import Footer from "./components/Footer";
-import Layout from "./admin/Layout";
-import Dashboard from "./admin/Dashboard";
-import AddShows from "./admin/AddShows";
-import ListShows from "./admin/ListShows";
-import ListBookings from "./admin/ListBookings";
+import Layout from "./pages/admin/Layout";
+import Dashboard from "./pages/admin/Dashboard";
+import AddShows from "./pages/admin/AddShows";
+import ListShows from "./pages/admin/ListShows";
+import ListBookings from "./pages/admin/ListBookings";
 
 const App = () => {
   const isAdminRoute = useLocation().pathname.startsWith("/admin");
