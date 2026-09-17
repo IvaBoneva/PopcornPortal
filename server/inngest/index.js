@@ -1,48 +1,75 @@
-import { Inngest } from "inngest";
-import User from "../models/User.js";
+import express from "express";
+import cors from "cors";
+import "dotenv/config";
+import { Webhook } from "svix";
+import { serve } from "inngest/express";
+import { inngest, functions } from "./inngest/index.js"; // Проверете дали пътят до inngest файла е правилен
 
-// Create a client to send and receive events
-export const inngest = new Inngest({ id: "movie-ticket-booking" });
+const app = express();
+const PORT = process.env.PORT || 5000;
 
-// Inngest Function to save user data to a database
-const syncUserCreation = inngest.createFunction(
-  { id: "sync-user-from-clerk", event: "user.created" },
-  async ({ event }) => {
-    const { id, first_name, last_name, email_addresses, image_url } =
-      event.data;
-    const userData = {
-      _id: id,
-      email: email_addresses[0].email_address,
-      name: `${first_name || ""} ${last_name || ""}`.trim(),
-      image: image_url,
-    };
-    await User.create(userData);
+// 1. CORS настройка
+app.use(cors());
+
+// 2. Отделен Webhook Handler за Clerk (Трябва да е ПРЕДИ express.json())
+// Важно: Svix изисква raw body (текстов или buffer формат) за верификация на подписите!
+app.post(
+  "/api/webhooks/clerk",
+  express.raw({ type: "application/json" }),
+  async (req, res) => {
+    try {
+      const webhookSecret = process.env.CLERK_WEBHOOK_SECRET;
+
+      if (!webhookSecret) {
+        console.error(
+          "CLERK_WEBHOOK_SECRET is missing in environment variables.",
+        );
+        return res.status(500).json({ error: "Missing webhook secret" });
+      }
+
+      const wh = new Webhook(webhookSecret);
+      const headers = req.headers;
+      const payload = req.body;
+
+      // Верификация на Svix подписите от Clerk
+      const evt = wh.verify(payload, {
+        "svix-id": headers["svix-id"],
+        "svix-timestamp": headers["svix-timestamp"],
+        "svix-signature": headers["svix-signature"],
+      });
+
+      const { type, data } = evt;
+
+      // Изпращаме събитието към Inngest с името от Clerk (user.created, user.deleted и т.н.)
+      await inngest.send({
+        name: type,
+        data: data,
+      });
+
+      return res
+        .status(200)
+        .json({ success: true, message: "Webhook processed successfully" });
+    } catch (err) {
+      console.error("Webhook verification failed:", err.message);
+      return res.status(400).json({ error: "Webhook verification failed" });
+    }
   },
 );
 
-// Inngest Function to delete user from database
-const syncUserDeletion = inngest.createFunction(
-  { id: "delete-user-with-clerk", event: "user.deleted" },
-  async ({ event }) => {
-    const { id } = event.data;
-    await User.findByIdAndDelete(id);
-  },
-);
+// 3. Стандартен Middleware за JSON за всички останали Express маршрути
+app.use(express.json());
 
-// Inngest Function to update user data in database
-const syncUserUpdation = inngest.createFunction(
-  { id: "update-user-from-clerk", event: "user.updated" },
-  async ({ event }) => {
-    const { id, first_name, last_name, email_addresses, image_url } =
-      event.data;
-    const userData = {
-      _id: id,
-      email: email_addresses[0].email_address,
-      name: `${first_name || ""} ${last_name || ""}`.trim(),
-      image: image_url,
-    };
-    await User.findByIdAndUpdate(id, userData);
-  },
-);
+// 4. Inngest Serve Endpoint
+app.use("/api/inngest", serve({ client: inngest, functions }));
 
-export const functions = [syncUserCreation, syncUserDeletion, syncUserUpdation];
+// 5. Тестов маршрут
+app.get("/", (req, res) => {
+  res.send("PopcornPortal Server is running!");
+});
+
+// Стартиране на сървъра
+app.listen(PORT, () => {
+  console.log(`Server listening at http://localhost:${PORT}`);
+});
+
+export default app;
