@@ -5,6 +5,7 @@ import connectDB from "./configs/db.js";
 import { clerkMiddleware } from "@clerk/express";
 import { serve } from "inngest/express";
 import { inngest, functions } from "./inngest/index.js";
+import { Webhook } from "svix";
 
 const app = express();
 const port = 3000;
@@ -15,6 +16,43 @@ await connectDB();
 app.use(express.json());
 app.use(cors());
 app.use(clerkMiddleware());
+
+// Забележка: Рутерът за Webhook трябва да чете суровата същност (raw body)
+app.post(
+  "/api/webhooks/clerk",
+  express.raw({ type: "application/json" }),
+  async (req, res) => {
+    const SIGNING_SECRET = process.env.CLERK_WEBHOOK_SECRET;
+
+    if (!SIGNING_SECRET) {
+      return res.status(400).json({ error: "Missing CLERK_WEBHOOK_SECRET" });
+    }
+
+    const payload = req.body;
+    const headers = req.headers;
+
+    const wh = new Webhook(SIGNING_SECRET);
+    let evt;
+
+    try {
+      evt = wh.verify(payload, {
+        "svix-id": headers["svix-id"],
+        "svix-timestamp": headers["svix-timestamp"],
+        "svix-signature": headers["svix-signature"],
+      });
+    } catch (err) {
+      return res.status(400).json({ error: "Webhook verification failed" });
+    }
+
+    // Изпращане на събитието към Inngest
+    await inngest.send({
+      name: `clerk/${evt.type}`,
+      data: evt.data,
+    });
+
+    return res.status(200).json({ success: true });
+  },
+);
 
 // API Routes
 app.get("/", (req, res) => res.send("Server is Live!"));
