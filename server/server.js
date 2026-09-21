@@ -1,4 +1,4 @@
-import express from "express";
+/*import express from "express";
 import cors from "cors";
 import "dotenv/config";
 import connectDB from "./configs/db.js";
@@ -59,7 +59,7 @@ app.use(cors());
 
     return res.status(200).json({ success: true });
   },
-);*/
+);
 
 app.post(
   "/api/webhooks/clerk",
@@ -120,6 +120,86 @@ app.post(
 );
 
 // 2. Глобалните JSON и Clerk middleware-и се поставят след raw webhook-а
+app.use(express.json());
+app.use(clerkMiddleware());
+
+// API Routes
+app.get("/", (req, res) => res.send("Server is Live!"));
+app.use("/api/inngest", serve({ client: inngest, functions }));
+
+app.listen(port, () =>
+  console.log(`Server listening at http://localhost:${port}`),
+);*/
+
+import express from "express";
+import cors from "cors";
+import "dotenv/config";
+import connectDB from "./configs/db.js";
+import { clerkMiddleware } from "@clerk/express";
+import { serve } from "inngest/express";
+import { inngest, functions } from "./inngest/index.js";
+import { Webhook } from "svix";
+
+const app = express();
+const port = 3000;
+
+await connectDB();
+
+app.use(cors());
+
+// Webhook endpoint: обработваме тялото като RAW buffer/string директно в манипулатора
+app.post(
+  "/api/webhooks/clerk",
+  express.raw({ type: "application/json" }),
+  async (req, res) => {
+    const SIGNING_SECRET = process.env.CLERK_WEBHOOK_SECRET;
+
+    if (!SIGNING_SECRET) {
+      return res.status(400).json({ error: "Missing CLERK_WEBHOOK_SECRET" });
+    }
+
+    const svix_id = req.headers["svix-id"];
+    const svix_timestamp = req.headers["svix-timestamp"];
+    const svix_signature = req.headers["svix-signature"];
+
+    if (!svix_id || !svix_timestamp || !svix_signature) {
+      return res.status(400).json({ error: "Missing svix headers" });
+    }
+
+    const wh = new Webhook(SIGNING_SECRET);
+    let evt;
+
+    try {
+      // req.body вече е Buffer благодарение на express.raw()
+      evt = wh.verify(req.body, {
+        "svix-id": svix_id,
+        "svix-timestamp": svix_timestamp,
+        "svix-signature": svix_signature,
+      });
+    } catch (err) {
+      console.error("Webhook verification failed:", err.message);
+      return res.status(400).json({ error: "Webhook verification failed" });
+    }
+
+    // Прихващаме типа на събитието
+    const eventType = evt.type;
+    console.log(`Received Clerk Webhook event: ${eventType}`);
+
+    try {
+      await inngest.send({
+        name: `clerk/${eventType}`,
+        data: evt.data,
+      });
+    } catch (inngestErr) {
+      console.error("Inngest send error:", inngestErr);
+      return res.status(500).json({ error: "Failed to send event to Inngest" });
+    }
+
+    return res.status(200).json({ success: true });
+  },
+);
+
+// Глобалните middleware-и остават СЛЕД webhook рутера
 app.use(express.json());
 app.use(clerkMiddleware());
 
