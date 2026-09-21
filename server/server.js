@@ -12,12 +12,9 @@ const port = 3000;
 
 await connectDB();
 
-// Middleware
-app.use(express.json());
 app.use(cors());
-app.use(clerkMiddleware());
 
-// Забележка: Рутерът за Webhook трябва да чете суровата същност (raw body)
+// 1. Webhook рутерът ТРЯБВА да е преди express.json()
 app.post(
   "/api/webhooks/clerk",
   express.raw({ type: "application/json" }),
@@ -41,10 +38,10 @@ app.post(
         "svix-signature": headers["svix-signature"],
       });
     } catch (err) {
+      console.error("Webhook Verification Error:", err.message);
       return res.status(400).json({ error: "Webhook verification failed" });
     }
 
-    // Изпращане на събитието към Inngest
     await inngest.send({
       name: `clerk/${evt.type}`,
       data: evt.data,
@@ -53,6 +50,10 @@ app.post(
     return res.status(200).json({ success: true });
   },
 );
+
+// 2. Глобалните JSON и Clerk middleware-и се поставят след raw webhook-а
+app.use(express.json());
+app.use(clerkMiddleware());
 
 // API Routes
 app.get("/", (req, res) => res.send("Server is Live!"));
