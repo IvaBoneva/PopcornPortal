@@ -15,7 +15,7 @@ await connectDB();
 app.use(cors());
 
 // 1. Webhook рутерът ТРЯБВА да е преди express.json()
-app.post(
+/*app.post(
   "/api/webhooks/clerk",
   express.raw({ type: "application/json" }),
   async (req, res) => {
@@ -56,6 +56,55 @@ app.post(
       name: `clerk/${evt.type}`,
       data: evt.data,
     });
+
+    return res.status(200).json({ success: true });
+  },
+);*/
+
+app.post(
+  "/api/webhooks/clerk",
+  express.raw({ type: "application/json" }),
+  async (req, res) => {
+    const SIGNING_SECRET = process.env.CLERK_WEBHOOK_SECRET;
+
+    if (!SIGNING_SECRET) {
+      return res.status(400).json({ error: "Missing CLERK_WEBHOOK_SECRET" });
+    }
+
+    const svix_id = req.headers["svix-id"];
+    const svix_timestamp = req.headers["svix-timestamp"];
+    const svix_signature = req.headers["svix-signature"];
+
+    if (!svix_id || !svix_timestamp || !svix_signature) {
+      return res.status(400).json({ error: "Missing svix headers" });
+    }
+
+    const payload = req.body.toString("utf8");
+
+    const wh = new Webhook(SIGNING_SECRET);
+    let evt;
+
+    try {
+      evt = wh.verify(payload, {
+        "svix-id": svix_id,
+        "svix-timestamp": svix_timestamp,
+        "svix-signature": svix_signature,
+      });
+    } catch (err) {
+      console.error("Webhook verification error:", err.message);
+      return res.status(400).json({ error: "Webhook verification failed" });
+    }
+
+    // Изпращане на събитието към Inngest с catch блок
+    try {
+      await inngest.send({
+        name: `clerk/${evt.type}`,
+        data: evt.data,
+      });
+    } catch (inngestErr) {
+      console.error("Inngest send error:", inngestErr);
+      return res.status(500).json({ error: "Failed to send event to Inngest" });
+    }
 
     return res.status(200).json({ success: true });
   },
