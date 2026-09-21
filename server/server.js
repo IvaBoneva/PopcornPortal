@@ -167,38 +167,43 @@ app.post(
     }
 
     const wh = new Webhook(SIGNING_SECRET);
-    let evt;
+    let payload;
 
     try {
-      // Svix verify приема Buffer или UTF-8 String
       const bodyString =
         req.body instanceof Buffer ? req.body.toString("utf8") : req.body;
 
-      evt = wh.verify(bodyString, {
+      // wh.verify проверява подписа и връща верифицираните данни
+      payload = wh.verify(bodyString, {
         "svix-id": svix_id,
         "svix-timestamp": svix_timestamp,
         "svix-signature": svix_signature,
       });
     } catch (err) {
       console.error("Webhook verification failed:", err.message);
-      // Спираме изпълнението тук, за да не стига до evt.type
       return res
         .status(400)
         .json({ error: "Webhook verification failed", details: err.message });
     }
 
-    // Допълнителна защита за валидност на evt
-    if (!evt || !evt.type) {
-      console.error("Invalid event structure:", evt);
+    // Ако payload е string, го парсваме до обект
+    const evt = typeof payload === "string" ? JSON.parse(payload) : payload;
+
+    // Извличаме типа и данните
+    const eventType = evt?.type;
+    const eventData = evt?.data;
+
+    if (!eventType) {
+      console.error("Missing event type in payload:", evt);
       return res.status(400).json({ error: "Invalid event structure" });
     }
 
-    console.log(`Successfully verified event: ${evt.type}`);
+    console.log(`Successfully verified Clerk event: ${eventType}`);
 
     try {
       await inngest.send({
-        name: `clerk/${evt.type}`,
-        data: evt.data,
+        name: `clerk/${eventType}`,
+        data: eventData || {},
       });
     } catch (inngestErr) {
       console.error("Inngest send error:", inngestErr);
