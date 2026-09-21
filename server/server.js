@@ -25,23 +25,33 @@ app.post(
       return res.status(400).json({ error: "Missing CLERK_WEBHOOK_SECRET" });
     }
 
-    const payload = req.body;
-    const headers = req.headers;
+    // Вземаме заглавията за Svix
+    const svix_id = req.headers["svix-id"];
+    const svix_timestamp = req.headers["svix-timestamp"];
+    const svix_signature = req.headers["svix-signature"];
+
+    if (!svix_id || !svix_timestamp || !svix_signature) {
+      return res.status(400).json({ error: "Missing svix headers" });
+    }
+
+    // Преобразуваме body-то изрично в string/Buffer за Svix
+    const payload = req.body.toString("utf8");
 
     const wh = new Webhook(SIGNING_SECRET);
     let evt;
 
     try {
       evt = wh.verify(payload, {
-        "svix-id": headers["svix-id"],
-        "svix-timestamp": headers["svix-timestamp"],
-        "svix-signature": headers["svix-signature"],
+        "svix-id": svix_id,
+        "svix-timestamp": svix_timestamp,
+        "svix-signature": svix_signature,
       });
     } catch (err) {
-      console.error("Webhook Verification Error:", err.message);
+      console.error("Webhook verification error:", err.message);
       return res.status(400).json({ error: "Webhook verification failed" });
     }
 
+    // Изпращане на събитието към Inngest
     await inngest.send({
       name: `clerk/${evt.type}`,
       data: evt.data,
