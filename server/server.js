@@ -170,24 +170,34 @@ app.post(
     let evt;
 
     try {
-      // req.body вече е Buffer благодарение на express.raw()
-      evt = wh.verify(req.body, {
+      // Svix verify приема Buffer или UTF-8 String
+      const bodyString =
+        req.body instanceof Buffer ? req.body.toString("utf8") : req.body;
+
+      evt = wh.verify(bodyString, {
         "svix-id": svix_id,
         "svix-timestamp": svix_timestamp,
         "svix-signature": svix_signature,
       });
     } catch (err) {
       console.error("Webhook verification failed:", err.message);
-      return res.status(400).json({ error: "Webhook verification failed" });
+      // Спираме изпълнението тук, за да не стига до evt.type
+      return res
+        .status(400)
+        .json({ error: "Webhook verification failed", details: err.message });
     }
 
-    // Прихващаме типа на събитието
-    const eventType = evt.type;
-    console.log(`Received Clerk Webhook event: ${eventType}`);
+    // Допълнителна защита за валидност на evt
+    if (!evt || !evt.type) {
+      console.error("Invalid event structure:", evt);
+      return res.status(400).json({ error: "Invalid event structure" });
+    }
+
+    console.log(`Successfully verified event: ${evt.type}`);
 
     try {
       await inngest.send({
-        name: `clerk/${eventType}`,
+        name: `clerk/${evt.type}`,
         data: evt.data,
       });
     } catch (inngestErr) {
