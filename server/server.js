@@ -79,6 +79,7 @@ app.post(
       return res.status(400).json({ error: "Missing svix headers" });
     }
 
+    // Вземаме суровото body като Buffer / String
     const payload = req.body.toString("utf8");
 
     const wh = new Webhook(SIGNING_SECRET);
@@ -95,11 +96,19 @@ app.post(
       return res.status(400).json({ error: "Webhook verification failed" });
     }
 
-    // Изпращане на събитието към Inngest с catch блок
+    // Проверка за валидност на evt и evt.type
+    const eventType = evt?.type;
+
+    if (!eventType) {
+      console.error("Received webhook event without a type:", evt);
+      return res.status(400).json({ error: "Invalid event type" });
+    }
+
+    // Изпращане към Inngest
     try {
       await inngest.send({
-        name: `clerk/${evt.type}`,
-        data: evt.data,
+        name: `clerk/${eventType}`,
+        data: evt.data || {},
       });
     } catch (inngestErr) {
       console.error("Inngest send error:", inngestErr);
